@@ -1,0 +1,80 @@
+name: Deploy to Fargate Prod
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build, Push Docker Image and Update Fargate Task
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Create prod env file
+        run: |
+          echo "NEXT_PUBLIC_API_URL=https://uchiake.com" >> apps/web/.env
+          echo "NEXT_PUBLIC_AUTH0_ISSUER_BASE_URL=https://uchiake.jp.auth0.com" >> apps/web/.env
+          echo "NEXT_PUBLIC_AUTH0_CLIENT_ID=3RVgrpxVlT3PqQ8FWIqVvJGitaSdrOpQ" >> apps/web/.env
+          echo "NEXT_PUBLIC_AUTH0_AUDIENCE=https://uchiake.com" >> apps/web/.env
+          echo "NEXT_PUBLIC_GA_MEASUREMENT_ID=G-NPVPSDKS8M" >> apps/web/.env
+
+      - name: Build Docker Image
+        run: |
+          docker build -f apps/api/Dockerfile -t patient-voice-api:latest .
+          docker build -f apps/web/Dockerfile -t patient-voice-web:latest .
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin 122610476511.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+      - name: Push Docker Image to ECR
+        run: |
+          API_IMAGE_URI=122610476511.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/patient-voice-api-prod:latest
+          docker tag patient-voice-api:latest $API_IMAGE_URI
+          docker push $API_IMAGE_URI
+
+          WEB_IMAGE_URI=122610476511.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/patient-voice-web-prod:latest
+          docker tag patient-voice-web:latest $WEB_IMAGE_URI
+          docker push $WEB_IMAGE_URI
+
+      - name: Update ECS Task Definitions
+        run: |
+          echo "=== Updating API Task Definition ==="
+          API_TASK_DEF=$(aws ecs describe-task-definition --task-definition patient-voice-prod-ecs-api-task)
+          NEW_API_TASK_DEF=$(echo "$API_TASK_DEF" | \
+            jq --arg IMAGE "$API_IMAGE_URI" '
+              .taskDefinition 
+              | del(.revision, .status, .taskDefinitionArn, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+            ')
+          echo "$NEW_API_TASK_DEF" > new-api-task-def.json
+          aws ecs register-task-definition --cli-input-json file://new-api-task-def.json
+
+          echo "=== Updating Web Task Definition ==="
+          WEB_TASK_DEF=$(aws ecs describe-task-definition --task-definition patient-voice-prod-ecs-web-task)
+          NEW_WEB_TASK_DEF=$(echo "$WEB_TASK_DEF" | \
+            jq --arg IMAGE "$WEB_IMAGE_URI" '
+              .taskDefinition 
+              | del(.revision, .status, .taskDefinitionArn, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+            ')
+          echo "$NEW_WEB_TASK_DEF" > new-web-task-def.json
+          aws ecs register-task-definition --cli-input-json file://new-web-task-def.json
+
+      - name: Force restart ECS service
+        run: |
+          aws ecs update-service \
+            --cluster patient-voice-prod-ecs-cluster \
+            --service patient-voice-prod-ecs-api-service \
+            --force-new-deployment
+          aws ecs update-service \
+            --cluster patient-voice-prod-ecs-cluster \
+            --service patient-voice-prod-ecs-web-service \
+            --force-new-deployment
