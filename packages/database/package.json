@@ -1,0 +1,28 @@
+{
+    "name": "@repo/database",
+    "version": "0.0.0",
+    "scripts": {
+        "db:generate": "prisma generate",
+        "db:push": "prisma db push --skip-generate",
+        "db:seed": "prisma db seed",
+        "upload": "ts-node scripts/upload.ts",
+        "upload:status": "ts-node scripts/upload-status.ts",
+        "dev": "tsc",
+        "build": "tsc"
+    },
+    "devDependencies": {
+        "@prisma/client": "^6.0.1",
+        "@types/node": "^22.10.1",
+        "prisma": "^6.0.1",
+        "ts-node": "^10.9.1"
+    },
+    "main": "./dist/index.js",
+    "types": "./src/index.ts",
+    "dependencies": {
+        "csv-parser": "^3.1.0",
+        "typescript": "^5.7.2"
+    },
+    "prisma": {
+        "seed": "ts-node prisma/seed.ts"
+    }
+}

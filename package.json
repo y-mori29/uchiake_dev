@@ -1,0 +1,23 @@
+{
+  "name": "patient-voice",
+  "license": "UNLICENSED",
+  "private": "true",
+  "workspaces": [
+    "patient-voice-frontend"
+  ],
+  "dependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "cd patient-voice-backend && npm run start:dev",
+    "dev:frontend": "cd patient-voice-frontend && npm run dev",
+    "upload": "turbo upload"
+  },
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.20.2",
+    "prisma": "^6.0.1",
+    "turbo": "^2.5.0"
+  },
+  "packageManager": "pnpm@9.15.1"
+}
